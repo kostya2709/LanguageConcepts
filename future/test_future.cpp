@@ -12,7 +12,7 @@ void task1(stdlike::Promise<int>&& promise)
     promise.SetValue(27);
 }
 
-void task2(stdlike::Promise<int>&& promise)
+void task_exception(stdlike::Promise<int>&& promise)
 {
     std::exception_ptr eptr;
     try
@@ -44,7 +44,7 @@ void test_simple() {
 void test_exception() {
     stdlike::Promise<int> promise;
     auto future = promise.MakeFuture();
-    std::thread t1(task2, std::move(promise));
+    std::thread t1(task_exception, std::move(promise));
 
     try {
         future.Get();
@@ -111,6 +111,24 @@ void test_simple_then() {
     assert(future_new.Get() == 6);
 }
 
+void test_then_exception() {
+    ThreadPool tp(4);
+    stdlike::Promise<int> promise;
+    auto future = promise.MakeFuture(&tp);
+    tp.Execute(task_exception, std::move(promise));
+
+    auto future_new = future.Then([](int y) {
+        assert(false && "Unreachable");
+        return 0;
+    });
+    try {
+        future_new.Get();
+        assert( false && "Unreachable");
+    } catch (...) {
+        
+    }
+}
+
 
 int main()
 {
@@ -121,4 +139,5 @@ int main()
     test_async();
     test_simple_pool();
     test_simple_then();
+    test_then_exception();
 }
