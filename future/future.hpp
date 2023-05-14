@@ -5,74 +5,26 @@
 #include <cassert>
 
 #include <atomic>
+#include <optional>
 
+#include "promise.hpp"
+#include "future_api.hpp"
 #include "shared_state.hpp"
 
 namespace stdlike {
 
-template <typename T>
-class Future {
-  template <typename U>
-  friend class Promise;
-
-  using SharedState = detail::SharedState<T>;
-  using SharedStatePtr = SharedState*;
- public:
-  // Non-copyable
-  Future(const Future&) = delete;
-  Future& operator=(const Future&) = delete;
-
-  // Movable
-  Future(Future&& other) {
-    shared_state_ = other.shared_state_;
-    other.shared_state_ = nullptr;
+  template <typename T>
+  Future<T> Future<T>::Then( std::function<T(T)>&& foo) {
+    assert( pool_ );
+    Promise<T> next_promise_;
+    auto future = next_promise_.MakeFuture(pool_);
+    future.prev_future_ = this;
+    auto lambda = [foo = std::move(foo), this, next_promise_ = std::move(next_promise_)](T res) mutable {
+      next_promise_.SetValue(foo(res));
+    };
+    hasThen_ = true;
+    cb_ = new Future<T>::Derived<decltype(lambda)>(std::move(lambda));
+    return future;
   }
-  Future& operator=(Future&& other) {
-    shared_state_ = other.shared_state_;
-    other.shared_state_ = nullptr;
-    return *this;
-  }
-
-  ~Future() {
-    if (shared_state_) {
-      shared_state_->Consume([](typename SharedState::Result){});
-    }
-  }
-
-  // One-shot
-  // Wait for result (value or exception)
-  T Get() {
-    typename SharedState::Result result;
-    std::atomic<uint32_t> state{0};
-
-    shared_state_->Consume([&](typename SharedState::Result cb_result){
-      result = std::move(cb_result); 
-      state.store(1);
-      state.notify_one();
-    });
-    shared_state_ = nullptr;
-
-    state.wait(0);
-
-    // Unwrap result
-    switch (result.index()) {
-      case detail::types::kValue:
-        return std::move(std::get<detail::types::kValue>(result));
-      case detail::types::kException:
-        std::rethrow_exception(std::get<detail::types::kException>(result));
-        assert(false && "Unreachable");
-      default:
-        assert(false && "Result is ill-formed");
-    }
-    assert(false && "Unreachable");
-  }
-
- private:
-  explicit Future(SharedStatePtr shared_state) : shared_state_(shared_state) {
-  }
-
- private:
-  SharedStatePtr shared_state_;
-};
 
 }  // namespace stdlike

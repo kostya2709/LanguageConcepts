@@ -6,8 +6,6 @@
 #include <functional>
 #include <variant>
 
-#include "rendezvous.hpp"
-
 namespace stdlike::detail {
 
 namespace types {
@@ -32,29 +30,37 @@ class SharedState {
   SharedState& operator=(SharedState&&) = default;
 
   void Produce(Result result) {
-    // If there was a Consume -> cb_(result)
-    // Otherwise -> result_ = result
+    if (has_result_.exchange(true)) {
+      return;
+    }
     result_ = std::move(result);
-    if (rendezvous_.Producer()) {
+
+    if (has_callback_.load()) {
       cb_(std::move(result_));
       delete this;
     }
   }
 
   void Consume(Callback cb) {
-    // If there was a Produce -> cb(result_)
-    // Otherwise -> cb_ = cb
+    if (has_callback_.exchange(true)) {
+      return;
+    }
     cb_ = std::move(cb);
-    if (rendezvous_.Consumer()) {
+    if (has_result_.load()) {
       cb_(std::move(result_));
       delete this;
     }
   }
 
+  bool HasResult() {
+    return has_result_.load();
+  }
+
  private:
   Callback cb_;
   Result result_;
-  Rendezvous rendezvous_;
+  std::atomic<bool> has_callback_{false};
+  std::atomic<bool> has_result_{false};
 };
 
 }  // namespace stdlike::detail

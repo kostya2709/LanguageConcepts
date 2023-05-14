@@ -1,9 +1,10 @@
 #pragma once
 
-#include "future.hpp"
+#include "future_api.hpp"
 
 #include <memory>
 #include "shared_state.hpp"
+#include "thread_pool.hpp"
 
 namespace stdlike {
 
@@ -26,6 +27,10 @@ class Promise {
   // One-shot
   Future<T> MakeFuture() {
     return Future<T>(shared_state_);
+  }
+  
+  Future<T> MakeFuture( ThreadPool* pool) {
+    return Future<T>(shared_state_, pool);
   }
 
   // One-shot
